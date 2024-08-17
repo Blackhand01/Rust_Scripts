@@ -1,5 +1,7 @@
-ususe std::mem;
+use std::mem;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 
 //------------------------------------------------
 // CircularBuffer
@@ -8,7 +10,7 @@ pub struct CircularBuffer<T> {
     data: Vec<T>,
     tail: usize,
     head: usize,
-    len: usize
+    len: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -20,24 +22,25 @@ pub enum Error {
 impl<T: Default> CircularBuffer<T> {
     pub fn new(capacity: usize) -> Self {
         let mut buf = Vec::with_capacity(capacity);
-        for _ in 0..capacity { buf.push(T::default()); }
-        CircularBuffer{
+        for _ in 0..capacity {
+            buf.push(T::default());
+        }
+        CircularBuffer {
             data: buf,
             tail: 0,
             head: 0,
-            len: 0
+            len: 0,
         }
-        
     }
 
-    pub fn write(&mut self, _element: T) -> Result<(), Error> {
+    pub fn write(&mut self, element: T) -> Result<(), Error> {
         if self.len == self.data.len() {
             return Err(Error::FullBuffer);
         } else {
-            self.data[self.tail] = _element;
+            self.data[self.tail] = element;
             self.tail = (self.tail + 1) % self.data.len();
             self.len += 1;
-            return Ok(());
+            Ok(())
         }
     }
 
@@ -48,7 +51,7 @@ impl<T: Default> CircularBuffer<T> {
             let element = mem::take(&mut self.data[self.head]);
             self.head = (self.head + 1) % self.data.len();
             self.len -= 1;
-            return Ok(element);
+            Ok(element)
         }
     }
 
@@ -58,27 +61,26 @@ impl<T: Default> CircularBuffer<T> {
         }
     }
 
-    pub fn overwrite(&mut self, _element: T) {
+    pub fn overwrite(&mut self, element: T) {
         // if it's full, we need to read one element and discard it
         if self.len == self.data.len() {
             self.read().unwrap();
-        } 
-        self.write(_element).unwrap();
+        }
+        self.write(element).unwrap();
     }
 
     fn make_contiguous(&mut self) {
-        
         // if it's empty, we can just reset the pointers
         if self.len == 0 {
             self.head = 0;
             self.tail = 0;
         } else {
-            // otherwise we need to make it contiguos: just rotate it until head is zero
+            // otherwise we need to make it contiguous: just rotate it until head is zero
             while self.head != 0 {
                 let element = self.read().unwrap();
                 self.write(element).unwrap();
             }
-        } 
+        }
     }
 
     fn real_index(&self, index: usize) -> usize {
@@ -87,30 +89,24 @@ impl<T: Default> CircularBuffer<T> {
         }
         (self.head + index) % self.data.len()
     }
-
 }
-
-
 
 impl<T: Default> Index<usize> for CircularBuffer<T> {
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
-
         &self.data[self.real_index(index)]
     }
 }
 
 impl<T: Default> IndexMut<usize> for CircularBuffer<T> {
-    
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        
         let idx = self.real_index(index);
         &mut self.data[idx]
     }
 }
 
-impl <T> Deref for CircularBuffer<T> {
+impl<T> Deref for CircularBuffer<T> {
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {
@@ -122,7 +118,7 @@ impl <T> Deref for CircularBuffer<T> {
 }
 
 pub trait TryDeref {
-    type Target: ?Sized ;
+    type Target: ?Sized;
 
     fn try_deref(&self) -> Result<&Self::Target, String>;
 }
@@ -155,7 +151,6 @@ impl<T: Default> DerefMut for CircularBuffer<T> {
 // volta possa accedere alla risorsa incapsulata 
 // evitando race condition
 //------------------------------------------------
-use std::sync::Mutex;
 
 pub struct SyncBuffer<T> {
     buf: Mutex<CircularBuffer<T>>,
@@ -163,25 +158,25 @@ pub struct SyncBuffer<T> {
 
 impl<T: Default> SyncBuffer<T> {
     pub fn new(capacity: usize) -> Self {
-        SyncBuffer {    
+        SyncBuffer {
             // Inizializziamo il buffer con una mutex contenente la chiamata alla funzione new di CircularBuffer
             buf: Mutex::new(CircularBuffer::new(capacity)),
         }
     }
 
-    // Utilizza &self perchè è un borrow condivisibile, quindi il metodo
-    // è chiamabile simultanemente ed è gestito in sincronizzazione.
-    // Se avessi usato &mut selfs avrei reso il metodo esclusivo
-    pub fn write(&self, element: T) -> Result<(), circbuf::Error<T>> {
+    // Utilizza &self perché è un borrow condivisibile, quindi il metodo
+    // è chiamabile simultaneamente ed è gestito in sincronizzazione.
+    // Se avessi usato &mut self avrei reso il metodo esclusivo
+    pub fn write(&self, element: T) -> Result<(), Error> {
         // Acquisisco il lock sul Mutex
-        let mut buf_guard = self.buf.lock().unwrap(); 
-        buf_guard.write(element)  // Scriviamo nel buffer usando il metodo originale di CircularBuffer
+        let mut buf_guard = self.buf.lock().unwrap();
+        buf_guard.write(element) // Scriviamo nel buffer usando il metodo originale di CircularBuffer
     }
 
-    pub fn read(&self) -> Result<T, circbuf::Error<T>> {
+    pub fn read(&self) -> Result<T, Error> {
         // Acquisisco il lock sul Mutex
-        let mut buf_guard = self.buf.lock().unwrap();  
-        buf_guard.read()  // Leggiamo dal buffer usando il metodo originale di CircularBuffer
+        let mut buf_guard = self.buf.lock().unwrap();
+        buf_guard.read() // Leggiamo dal buffer usando il metodo originale di CircularBuffer
     }
 }
 
@@ -191,14 +186,13 @@ impl<T: Default> SyncBuffer<T> {
 // Le condition variable consentono di ridurre al
 // minimo l'uso della CPU mentre i thread attendono
 //------------------------------------------------
-use std::sync::{Arc, Condvar, Mutex};
 
 struct BlockingSyncBuf<T> {
     buf: Mutex<CircularBuffer<T>>,
     cv: Condvar,
 }
 
-impl<T: Default> BlockingSyncBuf<T> {
+impl<T: Default + Clone> BlockingSyncBuf<T> {
     pub fn new(capacity: usize) -> Self {
         BlockingSyncBuf {
             buf: Mutex::new(CircularBuffer::new(capacity)),
@@ -209,16 +203,15 @@ impl<T: Default> BlockingSyncBuf<T> {
     pub fn write_blocking(&self, mut element: T) {
         let mut buf_guard = self.buf.lock().unwrap();
         loop {
-            match buf_guard.write(element) {
+            match buf_guard.write(element.clone()) {
                 Ok(_) => {
-                    self.cv.notify_one();  // Notifica i thread in attesa che possono ora leggere
+                    self.cv.notify_one(); // Notifica i thread in attesa che possono ora leggere
                     return;
                 }
-                Err(circbuf::Error::FullBuffer(el)) => {
-                    element = el;  // Questo thread si salva l'elemento
-                    buf_guard = self.cv.wait(buf_guard).unwrap();  // Questo thread attende che ci sia spazio disponibile
+                Err(Error::FullBuffer) => {
+                    buf_guard = self.cv.wait(buf_guard).unwrap(); // Questo thread attende che ci sia spazio disponibile
                 }
-                Err(_) => {
+                _ => {
                     panic!("Unexpected error");
                 }
             }
@@ -230,13 +223,13 @@ impl<T: Default> BlockingSyncBuf<T> {
         loop {
             match buf_guard.read() {
                 Ok(element) => {
-                    self.cv.notify_one();  // Notifica i thread in attesa che possono ora scrivere
+                    self.cv.notify_one(); // Notifica i thread in attesa che possono ora scrivere
                     return element;
                 }
-                Err(circbuf::Error::EmptyBuffer) => {
-                    buf_guard = self.cv.wait(buf_guard).unwrap();  // Questo thread attende che ci siano dati disponibili
+                Err(Error::EmptyBuffer) => {
+                    buf_guard = self.cv.wait(buf_guard).unwrap(); // Questo thread attende che ci siano dati disponibili
                 }
-                Err(_) => {
+                _ => {
                     panic!("Unexpected error");
                 }
             }
@@ -248,16 +241,14 @@ impl<T: Default> BlockingSyncBuf<T> {
 // Producer e Consumer
 //------------------------------------------------
 pub fn test_producer_consumer() {
-    let buf = Arc::new(BlockingSyncBuf::new(10));  // Creiamo un buffer condiviso con capacità 10
-    let buf1 = buf.clone();  // Cloniamo l'Arc per passarlo al consumer
+    let buf = Arc::new(BlockingSyncBuf::new(10)); // Creiamo un buffer condiviso con capacità 10
+    let buf1 = buf.clone(); // Cloniamo l'Arc per passarlo al consumer
 
     // Creiamo il thread del consumer
-    let consumer = thread::spawn(move || {
-        loop {
-            let el = buf1.read_blocking();  // Il consumer legge dal buffer
-            println!("read: {}", el);
-            thread::sleep(std::time::Duration::from_secs(2));  // Il consumer legge ogni 2 secondi
-        }
+    let consumer = thread::spawn(move || loop {
+        let el = buf1.read_blocking(); // Il consumer legge dal buffer
+        println!("read: {}", el);
+        thread::sleep(std::time::Duration::from_secs(2)); // Il consumer legge ogni 2 secondi
     });
 
     // Creiamo il thread del producer
@@ -265,9 +256,9 @@ pub fn test_producer_consumer() {
         let mut count = 0;
         loop {
             count += 1;
-            buf.write_blocking(count);  // Il producer scrive nel buffer
+            buf.write_blocking(count); // Il producer scrive nel buffer
             println!("wrote: {}", count);
-            thread::sleep(std::time::Duration::from_secs(1));  // Il producer scrive ogni 1 secondo
+            thread::sleep(std::time::Duration::from_secs(1)); // Il producer scrive ogni 1 secondo
         }
     });
 
@@ -276,3 +267,7 @@ pub fn test_producer_consumer() {
     consumer.join().unwrap();
 }
 
+fn main() {
+    // Puoi chiamare la tua funzione di test qui, o altro codice di test
+    test_producer_consumer();
+}
