@@ -1,80 +1,97 @@
-use std::sync::{Arc, Mutex, Condvar};
+use std::{sync::{Arc, Condvar, Mutex}, thread};
 
-struct CyclicBarrier<T> {
-    count: Mutex<usize>,        // Contatore per i thread che devono ancora arrivare
-    threshold: usize,           // Numero di thread attesi
-    condvar: Condvar,           // Condition variable per sincronizzare i thread
-    generation: Mutex<usize>,   // Permetterà di identificare se i thread sono ancora 
-                                // nella stessa "onda" di sincronizzazione, evita thread
-                                // troppo veloci
-    values: Mutex<Vec<T>>,      // Vettore per raccogliere i valori passati dai thread
+// La struttura `BarrierState` rappresenta lo stato interno della barriera.
+// Contiene:
+// - `waiting`: Numero di thread che stanno aspettando di raggiungere la barriera.
+// - `exiting`: Flag che indica se la barriera è "aperta" e i thread possono passare.
+struct BarrierState {
+    waiting: usize,
+    exiting: bool,
+} 
+
+// La struttura `CyclicBarrier` rappresenta la barriera ciclica.
+// Contiene:
+// - `size`: Numero di thread che devono raggiungere la barriera prima che si apra.
+// - `generation`: Permette di identificare se i thread sono ancora nella stessa "onda" di sincronizzazione, evita thread troppo veloci
+// - `cond`: Una condizione variabile che permette ai thread di aspettare e notificarsi l'un l'altro.
+pub struct CyclicBarrier {
+
+    size: usize,
+    generation: Mutex<BarrierState>,
+    cond: Condvar,
+
 }
 
-impl<T: Send + 'static> CyclicBarrier<T> {
-    fn new(threshold: usize) -> Arc<Self> {
-         Arc::new(CyclicBarrier {
-            count: Mutex::new(threshold),
-            threshold,
-            condvar: Condvar::new(),
-            generation: Mutex::new(0),
-            values: Mutex::new(Vec::with_capacity(threshold)), // Inizialmente vuoto, capacità uguale a threshold
-        })
+impl CyclicBarrier {
+    // Funzione `new` che crea una nuova barriera ciclica con un numero specificato di thread (`n`).
+    pub fn new(n: usize) -> CyclicBarrier {
+        CyclicBarrier {
+            size: n,
+            generation: Mutex::new(BarrierState { waiting: 0, exiting: false }),
+            cond: Condvar::new(),
+        }
     }
 
-    fn wait(&self, value: T)  -> Vec<T> {
-        let mut count = self.count.lock().unwrap();
+    // La funzione `wait` viene chiamata dai thread per aspettare alla barriera.
+    // Quando tutti i thread chiamano `wait`, la barriera si apre e i thread possono proseguire.
+    pub fn wait(&self) {
+        // Blocca l'accesso esclusivo allo stato della barriera.
         let mut generation = self.generation.lock().unwrap();
-        let mut values = self.values.lock().unwrap();
 
-        *count -= 1;
-        let current_generation = *generation;
-        
-        // Inseriamo il valore nel vettore
-        values.push(value);
+        // I thread non possono procedere se la barriera è aperta (`exiting` è true).
+        // Usando `wait_while`, il thread viene sospeso sulla condizione variabile fino a quando
+        // la barriera non è chiusa (`exiting` è false).
+        generation = self.cond.wait_while(generation, |generation| generation.exiting).unwrap();
 
-        // L'ultimo thread ha raggiunto la barriera, la "apriamo"
-        if(*count == 0){
-            *count = self.threshold;    // Reset del contatore per il prossimo ciclo
-            *generation += 1;           // Incremento della generazione per segnalare un nuovo ciclo
-            self.condvar.notify_all();  // Risveglia tutti i thread in attesa
+        // Incrementa il numero di thread in attesa alla barriera.
+        generation.waiting += 1;
+
+        // Se tutti i thread richiesti hanno raggiunto la barriera...
+        if generation.waiting == self.size {
+            // Imposta la barriera come aperta (`exiting` è true).
+            generation.exiting = true;
+            // Notifica a tutti i thread in attesa che la barriera è aperta e possono proseguire.
+            self.cond.notify_all();
+        } else {
+            // Se non tutti i thread sono arrivati, il thread attuale aspetta finché la barriera non si apre.
+            generation = self.cond.wait_while(generation, |generation| !generation.exiting).unwrap();
         }
-        else{
-            // Aspettiamo che tutti i thread raggiungano la barriera
-            while(*count != self.threshold && *generation == current_generation ) {
-                // il thread corrente attende su una Condvar, rilasciando temporaneamente il controllo del Mutex associato a count
-                count = self.condvar.wait(count).unwrap();
-            }
-            // Ritorniamo i valori raccolti, anche se siamo uno dei thread in attesa
-            values.clone()
+
+        // Una volta che il thread ha attraversato la barriera, decrementa il contatore `waiting`.
+        generation.waiting -= 1;
+
+        // Se è l'ultimo thread a passare attraverso la barriera, la barriera viene resettata.
+        // Imposta `exiting` su false e notifica a tutti i thread che la barriera è chiusa di nuovo.
+        if generation.waiting == 0 {
+            generation.exiting = false;
+            self.cond.notify_all();
         }
     }
 }
-
-
 
 fn main() {
     // Il CyclicBarrier è inizializzato con il numero 3
     // => 3 thread devono raggiungere il barrier prima 
     // che tutti possano continuare.
-    let abarrrier = Arc::new(cb::CyclicBarrier::new(3));
+    let abarrrier = Arc::new(CyclicBarrier::new(3));
 
-    let mut vt = Vec::new();
+    let mut v_threads = Vec::new();
 
      // Avvia 3 thread
-    for i in 0..3 {
+    for t in 0..3 {
         // Clona l'Arc contenente il CyclicBarrier per condividerlo tra i thread
         let cbarrier = abarrrier.clone();
 
-        vt.push(thread::spawn(move || {
-            for j in 0..10 {
+        v_threads.push(thread::spawn(move || {
+            for num in 0..10 {
                 // Ogni thread aspetta che tutti i thread raggiungano il barrier
                 cbarrier.wait();
-                println!("after barrier {} {}", i, j);
+                println!("after barrier {} {}", t, num);
             }
         }));
     }
     
-    for t in vt {
+    for t in v_threads {
         t.join().unwrap();
     }
 }
