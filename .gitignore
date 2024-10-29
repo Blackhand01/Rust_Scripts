@@ -1,0 +1,27 @@
+# Ignora le cartelle di compilazione e di output
+**/target/
+**/target/debug/
+**/target/release/
+**/.rustc_info.json
+
+# Ignora i file di lock
+**/Cargo.lock
+
+# Ignora i file temporanei ed esercism metadata
+**/.exercism
+**/CACHEDIR.TAG
+
+# Ignora i file di configurazione locali
+**/.idea/
+**/.vscode/
+**/.DS_Store
+
+# Ignora i file di log e altri file temporanei
+*.log
+*.tmp
+
+# Altri file che potrebbero essere specifici per configurazioni locali
+*.swp
+*.bak
+*.tmp
+*~
