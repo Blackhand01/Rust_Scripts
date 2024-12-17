@@ -1,6 +1,42 @@
 # Rust Scripts
 
-Welcome to my Rust Scripts repository! This is a collection of exercises I've completed to practice and deepen my understanding of Rust. Each exercise is contained within its own folder, with a brief description provided below.
+Welcome to my Rust Scripts repository! This is a collection of exercises I've completed to practice and deepen my understanding of Rust.
+
+## Creating and Testing Rust Projects
+
+### **Create a New Project**
+
+Use the `cargo new` command to create a new project. You can choose between:
+- **Binary Application** (with a `main` entry point):
+  ```bash
+  cargo new project_name
+  ```
+
+This command creates a directory with:
+- A basic structure (the `src/` folder with `main.rs` or `lib.rs`).
+- A `Cargo.toml` file to manage dependencies and metadata.
+
+### **Navigate to the Project Directory**
+
+```bash
+cd project_name
+```
+
+---
+
+### **Compile and Test the Project**
+
+1. **Compile the Project**
+   Compile the project using:
+   ```bash
+   cargo build
+   ```
+   To directly execute the binary:
+   ```bash
+   cargo run
+   ```
+
+Each exercise is contained within its own folder, with a brief description provided below.
 
 ## Battleship
 
@@ -37,3 +73,4 @@ In the `downloader` directory, I created a `Downloader` object designed to handl
 ---
 
 Each of these exercises has been instrumental in deepening my understanding of Rust, particularly in areas such as memory safety, concurrency, and systems programming. I hope you find these examples useful and informative as you explore the powerful features of the Rust programming language.
+
