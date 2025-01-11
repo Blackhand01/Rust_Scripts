@@ -159,13 +159,3 @@ impl RankingBarrier{
   }
 }
 ```
-
----
-
-### Domanda 4 (6 punti)
-- **Q4**: "Si implementi una pipeline concorrente con i seguenti requisiti:
-  - Pattern: `Producer-Consumer`, `Fan-out/Fan-in`.
-  - Una fase `Producer` genera numeri casuali.
-  - Una fase `Worker` elabora i numeri (moltiplicandoli per un fattore casuale).
-  - Una fase `Consumer` raccoglie i risultati e stampa i numeri elaborati.
-  - Deve supportare più worker concorrenti e un unico consumer."
