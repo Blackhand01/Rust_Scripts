@@ -20,6 +20,19 @@ let node2 = Node {
 ```
 Calcola la dimensione della memoria occupata da `node2` nello stack e nello heap su un'architettura a 64 bit. Spiega il motivo.
 
+stack 16
+- value: 4 Byte + 4
+- next: 
+    - enum Option: 1B tag + 7  // !non serve per NPO!
+    - Box<Node>: 8B puntatore
+heap 16
+    - <node1>:
+    - value: 4 Byte + 4
+    - next: 
+        - Box<Node>: 8B puntatore
+
+
+
 ---
 
 ## Esercizio 2
