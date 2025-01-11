@@ -9,12 +9,40 @@
 
 **Metodi da implementare**:
 ```rust
-pub struct BidirectionalChannel<T> { ... }
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{channel, Sender, Receiver};
+
+pub struct BidirectionalChannel<T> {
+  tx: Mutex<Sender<T>>,
+  rx: Mutex<Receiver<T>>,
+}
 
 impl<T: Send> BidirectionalChannel<T> {
-    pub fn new() -> (Arc<Self>, Arc<Self>);
-    pub fn send(&self, msg: T);
-    pub fn receive(&self) -> T;
+    pub fn new() -> (Arc<Self>, Arc<Self>){
+      (
+        (tx1, rx1) = mpsc::channel();
+        (tx2, rx2) = mpsc::channel();
+
+      Arc::new(
+        BidirectionalChannel{
+          tx: Mutex::new(tx1),
+          rx: Mutex::new(rx1),
+        }), 
+      Arc::new(
+        BidirectionalChannel{
+          tx: Mutex::new(tx2),
+          rx: Mutex::new(rx2),
+        }), 
+      )
+    }
+    pub fn send(&self, msg: T){
+      let mut tx = self.tx.lock().unwrap();
+      tx.send(msg).unwrap();
+    }
+    pub fn receive(&self) -> T{
+      ler rx = self.rx.lock().unwrap();
+      rx.recv().unwrap();
+    }
 }
 ```
 
@@ -25,17 +53,31 @@ impl<T: Send> BidirectionalChannel<T> {
 
 **Metodi da implementare**:
 ```rust
-pub struct ConcurrentLazyCache<K, V> { ... }
+pub struct ConcurrentLazyCache<K, V> {
+  cache: RwLock<HashMap<K, V>>,
+}
 
 impl<K, V> ConcurrentLazyCache<K, V>
 where
     K: Eq + Hash + Clone,
     V: Clone,
 {
-    pub fn new() -> Self;
+    pub fn new() -> Self{
+      ConcurrentLazyCache{ cache: RwLock::new(HashMap::new()),}
+    }
+
     pub fn get_or_insert_with<F>(&self, key: K, value_fn: F) -> V
-    where
-        F: FnOnce() -> V;
+    where F: FnOnce() -> V{
+      let cache_read = self.cache.read().unwrap();
+
+      if let Some(value) = cache_read.get(&key){ // ritorno un riferimento al valore nella HashMap
+        return value.clone();
+      }
+      else{
+        let mut cache_write = self.cache_write.write().unwrap();
+        cache_write.entry(key.clone()).or_insert_with(value_fn()).clone()
+      }
+    }
 }
 ```
 
@@ -68,5 +110,11 @@ impl RankingBarrier {
 pub fn looper<F, T>(rx: Receiver<T>, tx: Sender<T>, transform: F)
 where
     F: Fn(T) -> T + Send + 'static,
-    T: Send + 'static;
+    T: Send + 'static,
+    {
+      for value in rx{
+        tranformation = transform(value);
+        tx.send(tranformation).unwrap();
+      }
+    }
 ```
