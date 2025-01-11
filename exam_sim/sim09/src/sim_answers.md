@@ -1,153 +1,118 @@
-# APPELLO DD/MM/YYYY
+```markdown
+# Simulazione d'Esame con Soluzioni
 
-## 6. Programmazione
+## 1. Borrow Checker
 
-### Esercizio 1
-
-Si realizzi l’implementazione della struttura dati `Exchanger<T: Send>` (e dei metodi e delle funzioni necessarie) utile per realizzare una comunicazione bidirezionale.
-
-Ciascun lato della comunicazione dispone di un’istanza della struttura `Exchanger<T: Send>`. La comunicazione avviene invocando il metodo:
+### Domanda
+Spiegare il comportamento del codice seguente e indicare perché genera un errore di compilazione. Successivamente, fornire una versione corretta del codice che possa essere compilata ed eseguita.
 
 ```rust
-fn exchange(&self, t: T) -> Option<T>
-```
-
-che, una volta invocato, si blocca fino a quando non viene invocato il metodo corrispettivo sulla struttura corrispondente al lato opposto della comunicazione. Dopodiché, restituisce il valore che è stato passato come argomento al metodo corrispondente al lato opposto (che farà altrettanto), sotto forma di `Some(t)`.
-
-- Lo scambio può essere ripetuto un numero arbitrario di volte.
-- Se una delle due strutture formanti la coppia viene distrutta, un'eventuale chiamata bloccata sul metodo della struttura restante terminerà restituendo il valore `None`.
-
-Si implementi tale struttura in linguaggio Rust avendo cura che la sua implementazione sia thread-safe.
-
-
-```rust
-pub struct Exchanger<T>{
-    data: Mutex<Option<T>>,
-    cv: Condvar,
-    state: Mutex<bool>,
+struct Container {
+    data: Vec<i32>,
 }
 
-impl<T: Send> Exchanger<T>{
-    fn new() -> Self{
-        Exchanger{
-            data: Mutex::new(None),
-            cv: Condvar::new(),
-            state: Mutex::new(true),
-        }
+impl Container {
+    fn add_item(&mut self, item: i32) {
+        self.data.push(item);
     }
 
-    fn exchange(&self, t: T) -> Option<T>{
-
-        let mut data = self.data.lock().unwrap();
-        let state = self.state.lock().unwrap();
-         if !*state{
-            return None;
-        }
-
-        if *data.is_none(){ 
-            // non c'è nessun messaggio,
-            // metto il mio msg
-            // restituisco il msg dell'altro
-            *data = Some(t);
-            while data.is_none(){
-                *data = self.cv.wait(data).unwrap();
-            }
-            data.take()
-        }
-        else{
-            
-            let Some(val) = data.take();
-            cv.notify_one();
-            Some(val)
-        }
-
+    fn get_first(&self) -> Option<&i32> {
+        self.data.first()
     }
 }
 
-impl Drop for Exchanger{
-    fn drop(&self){
-        let mut state = self.state.lock().unwrap();
-        *state = false;
-        self.cv.notify_all();
-    }
-}
-
-```
-
----
-
-## 4. Strutture Dati
-
-### Esercizio 1
-
-Si considerino le seguenti strutture dati e rispettive porzioni di codice. Per ciascuna di esse si indichi la dimensione di memoria allocata nello stack e nello heap, ipotizzando un’architettura a 64 bit.
-
-```rust
-let mut vector = Vec::<u64>::with_capacity(8);
-for i in 0..5 {
-    vector.push(i);
-}
-let vslice = &vector[1..3];
-```
-
-Indicare:
-1. La dimensione allocata per `vector` nello stack.
-2. La dimensione allocata per i dati di `vector` nello heap.
-3. La dimensione di memoria riferita da `vslice`.
-
-- stack
-    - vector: 
-        - puntatore a Vec -> 64bit = 8 Byte
-        - capacity -> 1 usize = 8 Byte
-        - length -> 1 usize = 8 Byte
-    - vslice: 
-        - puntatore a Vec[1..3] -> 64bit = 8 Byte
-        - length -> usize = 8 Byte
-
-- heap
-    - vector: 8*8 = 64 Byte
-1. 24 Byte (puntatore, capacity[8], length [5])
-2. 64 Byte (capacity * u64)
-3. 16 Byte
-
----
-
-### Esercizio 2
-
-Si consideri il programma seguente che riporta la numerazione delle linee di codice.
-
-```rust
 fn main() {
-    let numbers = vec![1, 2, 3, 4, 5, 8];
+    let mut container = Container { data: vec![] };
+    container.add_item(42);
 
-    let res = numbers
-        .iter()
-        .filter(|&x| x % 2 == 0) // 2, 4, 8
-        .zip('a'..'z'); //2a, 4b, 8c
+    let first = container.get_first();
+    container.add_item(50);
 
-    let last = res
-        .clone()
-        .map(|(a, b)| format!("{b}{a}")) //a2, ...
-        .last(); // c8
-
-    println!("last: {:?}", last);
-    println!("res: {:?}", res.count());
+    println!("First item: {:?}", first);
 }
 ```
 
-Rispondere alle seguenti domande:
-1. Che cosa stampa questo codice?
-2. Che cosa fanno le istruzioni alle righe 5, 6, 7?
-3. Che cosa capita se si omette la riga 10? Perché?
+1. Perché il codice genera un errore di borrow checker?
+   - Il metodo `get_first` prende in prestito `self` in maniera immutabile, ma successivamente `add_item` richiede un mutabile. In Rust, non è possibile avere un riferimento mutabile a `self` mentre esiste un riferimento immutabile attivo.
 
-1. c8 3
-2. numbers entra in uno stream di procedure, la prima rende iterable il vettore, quindi posso accede ai singoli valori, poi filtra i valori pari, poi li zippa con le lettere dell'alfabeto
-3. res, dopo non sarà più disponibile per la stampa, perchè sarà stato consumato da last
+2. Versione corretta:
+```rust
+struct Container {
+    data: Vec<i32>,
+}
+
+impl Container {
+    fn add_item(&mut self, item: i32) {
+        self.data.push(item);
+    }
+
+    fn get_first(&self) -> Option<i32> {
+        self.data.first().copied()
+    }
+}
+
+fn main() {
+    let mut container = Container { data: vec![] };
+    container.add_item(42);
+
+    let first = container.get_first();
+    container.add_item(50);
+
+    println!("First item: {:?}", first);
+}
+```
+
 ---
 
-### Esercizio 3
+## 2. Smart Pointers
 
-Si descriva il comportamento del seguente programma. Se presenta delle problematiche, indicare come può essere modificato:
+### Domanda
+Si consideri il seguente codice che utilizza un `Rc`:
+
+```rust
+use std::rc::Rc;
+
+fn main() {
+    let shared = Rc::new(vec![10, 20, 30]);
+
+    let a = Rc::clone(&shared);
+    let b = Rc::clone(&shared);
+
+    println!("Shared vector: {:?}", shared);
+
+    let dropped = Rc::try_unwrap(shared);
+    println!("Unwrapped vector: {:?}", dropped);
+}
+```
+
+1. Spiegare cosa accade durante l'esecuzione di questo codice.
+   - La funzione `Rc::try_unwrap` fallisce perché esistono ancora altri riferimenti (`a` e `b`) al dato condiviso.
+
+2. Comportamento dell'istruzione `Rc::try_unwrap`.
+   - `Rc::try_unwrap` restituisce il valore contenuto se non ci sono altri riferimenti attivi. Altrimenti, restituisce un errore.
+
+3. Versione corretta:
+```rust
+use std::rc::Rc;
+
+fn main() {
+    let shared = Rc::new(vec![10, 20, 30]);
+
+    println!("Shared vector: {:?}", shared);
+
+    match Rc::try_unwrap(shared) {
+        Ok(vec) => println!("Unwrapped vector: {:?}", vec),
+        Err(_) => println!("Cannot unwrap; more references exist."),
+    }
+}
+```
+
+---
+
+## 3. Concorrenza e gestione dei thread
+
+### Domanda
+Descrivere il comportamento del programma seguente e identificare eventuali problematiche. Successivamente, proporre le modifiche necessarie affinché il programma funzioni senza errori.
 
 ```rust
 use std::sync::{Arc, Mutex, Condvar};
@@ -156,61 +121,109 @@ use std::time::Duration;
 
 fn main() {
     let pair = Arc::new((Mutex::new(false), Condvar::new()));
-    let pair2 = Arc::clone(&pair);
+    let pair_clone = Arc::clone(&pair);
 
-    thread::spawn(move || {
-        let (lock, cvar) = &*pair2;
+    let handle = thread::spawn(move || {
+        let (lock, cvar) = &*pair_clone;
         let mut started = lock.lock().unwrap();
         *started = true;
         cvar.notify_one();
     });
 
     let (lock, cvar) = &*pair;
-
-    println!("Waiting ...");
-    thread::sleep(Duration::from_secs(1));
-
     let mut started = lock.lock().unwrap();
     started = cvar.wait(started).unwrap();
 
-    println!("End!");
+    handle.join().unwrap();
 }
 ```
 
-Il codice presenta un programam che fa uso di 2 thread.
-Il thread principale crea una tupla, "pair" a cui si accede tramite smart pointer Arc, il quale permetter operazioni atomiche attraverso il suo contatore dei riferimenti. La tupla è formata da una mutex che protegge un valore booleano e da una conditional variable. Viene poi creata pair2 che è un clone di pair e verrà passato al thread figlio per poter accedere alla mutex e alla condvar. Dopodichè il thread principale dorme per 1 secondo acquisisce il lock sulla mutex e rimane in attesa con wait (attende in maniera ottimizzata spreca poca CPU).
-Nel mentre il thread secondario richiede anche lui il lock, metti il valore booleano a true e notifica all'altro thread che ha finito attraverso la conditiona variable.
-Il problema può verificarsi se il thread secondario finisce la sua serie di azioni (acquisisce il lock, mette il boolean a true, notifica che ha finito) mentre il thread principale dorme e non è ancora in wait.
-Può essere corretto così:
+1. Problemi del codice:
+   - Possibile deadlock se il thread principale non entra in attesa prima della notifica. Il thread principale potrebbe perdere la notifica.
 
+2. Versione corretta:
 ```rust
 use std::sync::{Arc, Mutex, Condvar};
 use std::thread;
-use std::time::Duration;
 
 fn main() {
     let pair = Arc::new((Mutex::new(false), Condvar::new()));
-    let pair2 = Arc::clone(&pair);
+    let pair_clone = Arc::clone(&pair);
 
-    thread::spawn(move || {
-        let (lock, cvar) = &*pair2;
+    let handle = thread::spawn(move || {
+        let (lock, cvar) = &*pair_clone;
         let mut started = lock.lock().unwrap();
         *started = true;
         cvar.notify_one();
     });
 
     let (lock, cvar) = &*pair;
-
-    println!("Waiting ...");
-    thread::sleep(Duration::from_secs(1));
-
     let mut started = lock.lock().unwrap();
-    while !*started{
-        started = cvar.wait(started).unwrap();
-    }
+    started = cvar.wait_while(started, |flag| !*flag).unwrap();
 
-    println!("End!");
+    handle.join().unwrap();
 }
 ```
+
 ---
 
+## 4. Programmazione
+
+### Domanda
+Implementare una struttura dati `ThreadSafeCounter` che consenta di incrementare e leggere un valore condiviso in modo thread-safe. La struttura deve offrire i seguenti metodi:
+
+- `new() -> Self`: inizializza il contatore a 0.
+- `increment(&self)`: incrementa il contatore di 1.
+- `get(&self) -> usize`: restituisce il valore attuale del contatore.
+
+Inoltre, creare un test che verifica che, utilizzando più thread, il contatore restituisca il valore corretto dopo un certo numero di incrementi.
+
+### Soluzione:
+```rust
+use std::sync::{Arc, Mutex};
+use std::thread;
+
+struct ThreadSafeCounter {
+    counter: Mutex<usize>,
+}
+
+impl ThreadSafeCounter {
+    fn new() -> Self {
+        Self {
+            counter: Mutex::new(0),
+        }
+    }
+
+    fn increment(&self) {
+        let mut lock = self.counter.lock().unwrap();
+        *lock += 1;
+    }
+
+    fn get(&self) -> usize {
+        let lock = self.counter.lock().unwrap();
+        *lock
+    }
+}
+
+fn main() {
+    let counter = Arc::new(ThreadSafeCounter::new());
+    let mut handles = vec![];
+
+    for _ in 0..10 {
+        let counter_clone = Arc::clone(&counter);
+        let handle = thread::spawn(move || {
+            for _ in 0..100 {
+                counter_clone.increment();
+            }
+        });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    println!("Final counter value: {}", counter.get());
+}
+```
+```

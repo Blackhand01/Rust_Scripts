@@ -1,9 +1,3 @@
-Ecco una simulazione d'esame in stile Rust, basata sui concetti esposti nei documenti forniti. La struttura segue il formato degli esempi indicati.
-
----
-
-# Simulazione d'Esame Rust
-
 ## 1. Borrow Checker
 
 ### Domanda
