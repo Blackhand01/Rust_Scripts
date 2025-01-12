@@ -26,7 +26,16 @@ fn main() {
 ---
 
 ### Soluzione
-
+```rust
+fn main() {
+    let mut x = 10;
+    let r1 = &mut x;
+    *r1 += 5;
+    let r2 = &mut x;
+    *r2 += 10;
+    println!("x: {}", x);
+}
+```
 
 ---
 
@@ -52,17 +61,41 @@ fn main() {
         println!("Length: {}", borrowed.len());
     }
 
-    let mut borrowed_mut = data.borrow_mut(); // Questo genera un errore
+    let mut borrowed_mut = data.borrow_mut();
     borrowed_mut.push(5);
 }
 ```
 
 1. Qual è il problema del codice?  
 2. Come si può risolvere mantenendo lo stesso comportamento?
-
 ---
 
 ### Soluzione
+
+1. ho in contemporanea un riferimento mutabile e uno immutabile a data, non è permesso dal borrow checker.+
+2. sol:
+```rust
+use std::cell::RefCell;
+
+fn main() {
+    let data = RefCell::new(vec![1, 2, 3]);
+
+    {
+        let mut borrowed = data.borrow_mut();
+        borrowed.push(4);
+    }
+
+
+    {
+        let borrowed = data.borrow();
+        println!("Data: {:?}", data.borrow());
+        println!("Length: {}", borrowed.len());
+    }
+
+    let mut borrowed_mut = data.borrow_mut();
+    borrowed_mut.push(5);
+}
+```
 
 
 ---
@@ -85,11 +118,22 @@ fn main() {
     println!("Somma dei numeri pari: {}", sum);
 }
 ```
-
 ---
 
 ### Soluzione
+```rust
+fn main() {
+    let range = 1..=10;
+    let is_even = |x: i32| x % 2 == 0;
 
+    // Usa un iteratore e la chiusura `is_even` per calcolare la somma dei numeri pari
+    let sum = range
+        .filter(|&x| is_even(x))
+        .sum::<i32>();
+
+    println!("Somma dei numeri pari: {}", sum);
+}
+```
 
 ---
 
@@ -105,3 +149,24 @@ Scrivi un'implementazione per una struttura generica `Config<T>`.
 ---
 
 ### Soluzione
+```rust
+trait Resettable<T>{
+    fn reset(&mut self);
+    fn set(&mut self, value: T);
+}
+
+struct Config<T>{
+    state: T,
+    default: T,
+}
+
+impl<T> Resettable<T> for Config<T>{
+    fn reset(&mut self){
+        self.state = self.default.clone();
+    }
+
+    fn set(&mut self, value: T){
+        self.state = value;
+    }
+}
+```

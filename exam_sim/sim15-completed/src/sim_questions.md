@@ -35,8 +35,8 @@ fn main() {
 ---
 
 ### Soluzione
-
-
+1. Il valore ritornato dalla funzione, result, muore all'interno dello scope del blocco, venendo deallocata.
+2. basta togliere il blocco
 
 ---
 
@@ -58,7 +58,7 @@ fn main() {
         let handle = thread::spawn(move || {
             for _ in 0..10 {
                 let mut num = counter_clone.lock().unwrap();
-                // Incrementa il contatore
+                *num+=1;
             }
         });
         handles.push(handle);
@@ -89,7 +89,7 @@ fn main() {
     let numbers = vec![1, 2, 3, 4, 5];
 
     // Applica una chiusura per trasformare i numeri in stringhe
-    let formatted: Vec<String> = numbers.into_iter().map(/* TODO */).collect();
+    let formatted: Vec<String> = numbers.into_iter().map(|x| format!("Numero: {}", x)).collect();
 
     for s in formatted {
         println!("{}", s);
